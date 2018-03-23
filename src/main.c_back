@@ -1,0 +1,204 @@
+/**
+ **************************************************************************************
+ * @file    main.c
+ * @brief   SPI Stream Audio Player (Master)
+ *
+ * @author  Tian Feng
+ * @email   fengtian@topqizhi
+ * @version V1.0.0
+ *
+ * &copy; Shanghai Mountain View Silicon Technology Co.,Ltd. All rights reserved.
+ **************************************************************************************
+ */
+
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <time.h>
+#include <curl/curl.h>
+#include <getopt.h>
+
+#include "crc.h"
+#include "ssap_protocol.h"
+#include "string_convert.h"
+#include "spim.h"
+#include "queue.h"
+#include "log.h"
+#include "microphone.h"
+#include "client_shared.h"
+
+/* tts */
+#include "user_voice.h"
+
+#define  VERSION "V1.0.0"
+#define  MAX_CHANNEL_NUMBER 5
+#define  MAX_THREAD_NUMBER 1
+
+
+static char *this_project = "topqizhi-player";
+
+const char* demoText1 = "大家好, 亲爱的用户，您好，这是一个语音"; //合成文本
+const char* demoText2 = "这套解决方案最大的特点是约60秒内可以测量出用户的心率、心率变异、血压趋势、血氧饱和度、心电图";
+const char *emomo_text = "请稍等";
+const char *emomo_text1 = "你好,有什么可以帮助你吗?";
+const char *emomo_text2 = "欢迎使用一摸摸";
+
+typedef enum thread_func_enum
+{
+	SPI_TOKEN_PID,
+	WEB_DOWNLOAD_PID,
+	DOWNLOAD_DATA_TO_SPIM_PID,
+	SET_SOFA_COMMAND_PID,
+	MICROPHONE_WAKEUP_PID,
+	CHANGE_PLAY_SONG_MODE_PID,
+	SPI_MP3_PID,
+} thread_func_enum_t;
+
+typedef struct thread_func_ops
+{
+	void (*thread_func)(void);
+	pthread_t thread_id;
+} thread_func_ops_t;
+
+static uint32_t create_all_pthread(void)
+{
+	uint32_t ret = 0;
+
+	thread_func_ops_t thread_func_array[MAX_THREAD_NUMBER] = {
+		//[SPI_TOKEN_PID] = { spim_token_thread, 0 },
+		//{ web_download_thread, 0 },
+		//{ download_data_to_spim_process_thread, 0 },
+		//{ set_sofa_command_thread, 0 },
+		//{ change_play_song_mode_thread, 0 },
+
+		//{ tts_audio_get_thread_proc, 0 },
+		//{ microphone_wakeup_thread, 0 },
+		//{ isr_voice_record_thread_proc, 0 },
+	};
+
+#if 1
+	for(ret = 0; ret < MAX_THREAD_NUMBER; ret++) {
+		if(pthread_create(&thread_func_array[ret].thread_id, NULL,
+							(void *)thread_func_array[ret].thread_func, NULL) == -1) {
+			LOGE("create thread error, ret=%d\n", ret);
+		}
+		sleep(1);
+	}
+
+	//for(ret = 0; ret < MAX_THREAD_NUMBER; ret++) {
+	//	if(pthread_join(thread_func_array[ret].thread_id, NULL)) {
+	//		LOGE("join thread error, ret=%d\n", ret);
+	//	}
+	//	sleep(1);
+	//}
+#endif
+
+	return ret;
+}
+
+
+/* start here */
+int main(int argc, char * argv[])
+{
+/* tts */
+    int ret;
+	uint32_t tts_ret;
+	pthread_t tidp;
+	pthread_t wakeup_thread_id;
+	pthread_t recoder_thread_id;
+	pthread_t tts_thread_id;
+	pthread_t audio_play_id;
+
+	spi_master_init();
+
+	sem_wakeup_init();
+	//set_online_play_url("https://www.topqizhi.com/chengdu.mp3");
+	//set_online_play_url("https://www.topqizhi.com/wKgDslLjQz_R1_-dAAOHn5nr5rQ068.mp3");
+	//set_online_play_url("http://audio.xmcdn.com/group3/M06/D8/1C/wKgDslLjQz_R1_-dAAOHn5nr5rQ068.mp3");
+
+#if 1
+	/* msp login */
+	//sleep(15);
+    ret = tts_init();
+    if(0 != ret) {
+        LOGE("Login initial failed!\n");
+        return -1;
+    }
+	/* mic wakeup shell */
+	//microphone_wakeup_thread();
+	if(pthread_create(&wakeup_thread_id, NULL, microphone_wakeup_poll_thread, NULL) == -1) {
+		LOGE("create wake up thread error\n");
+	}
+
+	/* startup wrt */
+	//wrt_open_audio_play();
+
+	/* get audio data */
+	if(pthread_create(&tts_thread_id, NULL, tts_audio_get_thread_proc, NULL) == -1) {
+		LOGE("create tts thread error\n");
+	}
+
+	/* play audio */
+	if(pthread_create(&audio_play_id, NULL, tts_audio_play_thread, NULL) == -1) {
+		LOGE("create audio thread error\n");
+	}
+
+	/* record */
+	LOGD("enter isr_voice_record_thread_proc\n");
+	isr_voice_record_thread_proc();
+
+	/* wait get */
+	if(pthread_join(tts_thread_id, NULL)) {
+		LOGE("join tts thread error\n");
+	}
+
+	/* wait play */
+	if(pthread_join(audio_play_id, NULL)) {
+		LOGE("join audio play thread  error\n");
+	}
+
+	/* wait wakeup */
+	if(pthread_join(wakeup_thread_id, NULL)) {
+		LOGE("join wakeup thread  error\n");
+	}
+#endif
+
+#if 0
+	pthread_t mqtt_pub_id;
+	pthread_t mqtt_sub_id;
+
+	/* sub */
+	if(pthread_create(&mqtt_sub_id, NULL, mqtt_sub_thread, NULL) == -1) {
+		LOGE("create sub thread error\n");
+	}
+
+	sleep(1);
+	/* pub */
+	if(pthread_create(&mqtt_pub_id, NULL, mqtt_pub_thread, NULL) == -1) {
+		LOGE("create pub thread error\n");
+	}
+
+	/* wait pub */
+	if(pthread_join(mqtt_pub_id, NULL)) {
+		LOGE("join wakeup thread  error\n");
+	}
+	/* wait sub */
+	if(pthread_join(mqtt_sub_id, NULL)) {
+		LOGE("join wakeup thread  error\n");
+	}
+#endif
+
+	/* */
+	spi_master_deinit();
+
+	return ret;
+}
+
+
+/* code end here */

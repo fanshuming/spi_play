@@ -34,19 +34,44 @@
 
 #define  VERSION "V1.0.0"
 
+unsigned long get_fileSize(const char *path)  
+{  
+    unsigned long filesize = -1;  
+    FILE *fp;  
+    fp = fopen(path, "r");  
+    if(fp == NULL)  
+        return filesize;  
+    fseek(fp, 0L, SEEK_END);  
+    filesize = ftell(fp);  
+    fclose(fp);  
+    return filesize;  
+} 
+
 int main(int argc, char * argv[])
 {
 	//	wrt_open_audio_play();
 
 	uint8_t *pcm_file_name = "/tmp/test.mp3";
 	
-        spi_master_init();
+	unsigned long fileSize = -1;
+
+	char s[] = "0\n";
+        FILE *fid = fopen("/etc/config/mic_wake","w");
+        fprintf(fid,"%s",s);
+        fclose(fid);
+	
+
 	if(argc >= 2)
 	{
 		pcm_file_name = argv[1];
 	}
 
-	play_local_pcm(pcm_file_name);
+	fileSize = get_fileSize(pcm_file_name);
+	if(fileSize > 100)
+	{
+        	spi_master_init();
+		play_local_pcm(pcm_file_name);
+	}
 /*
         int ret;
         FILE * pFile;

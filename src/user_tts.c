@@ -85,6 +85,7 @@ extern void tts_audio_init(void){
 	p_ttsAudio->ttsSynthStatus = MSP_TTS_FLAG_DATA_END;	
 }
 
+uint32_t decoder_type = MP3_DECODER;
 /* add by fengtian begain */
 static uint32_t tts_audio_start_command_send(uint32_t file_data_size)
 {
@@ -93,7 +94,7 @@ static uint32_t tts_audio_start_command_send(uint32_t file_data_size)
 	uint8_t  start_command_buffer[256] = {0};
 	uint8_t *tts_name = "demo.pcm";
 	//uint32_t decoder_type = WAV_DECODER; /* change pcm to wav, ignore */
-	uint32_t decoder_type = MP3_DECODER; /* mp3 */
+//	uint32_t decoder_type = MP3_DECODER; /* mp3 */
 
 	LOGD("enter tts_audio_start_command_send \n");
 
@@ -110,6 +111,10 @@ static uint32_t tts_audio_start_command_send(uint32_t file_data_size)
 	spim_send_command_data(start_command_buffer, start_buffer_size, SSAP_CMD_START, SSAP_SEND_DATA_LENGTH);
 
 	/* send pcm head */
+	if(decoder_type == WAV_DECODER)
+	{
+		spim_send_command_data((uint8_t *)&wave_header, sizeof(wav_header_t), SSAP_CMD_DATA, SSAP_SEND_DATA_LENGTH);
+	}
 	//spim_send_command_data((uint8_t *)&wave_header, sizeof(wav_header_t), SSAP_CMD_DATA, SSAP_SEND_DATA_LENGTH);
 
 	return ret;
@@ -122,6 +127,13 @@ void play_local_pcm(uint8_t *file_name)
 	FILE *wakeup_pcm_fp;
 	uint8_t read_pcm_frame[512] = {0};
 #if 1
+	if(!strstr(file_name,".mp3"))
+	{
+		decoder_type = WAV_DECODER;
+	}else{
+		decoder_type = MP3_DECODER;
+	}
+
 	LOGD("enter play_local_pcm, file_name=%s\n", file_name);
 	tts_audio_start_command_send(play_audio_len);
 
@@ -132,6 +144,7 @@ void play_local_pcm(uint8_t *file_name)
 	while(1) {
 		play_audio_len = fread(read_pcm_frame, 1, SSAP_SEND_DATA_LENGTH, wakeup_pcm_fp);
 		if(play_audio_len <= 0) {
+			spim_send_command_data(read_pcm_frame, play_audio_len, SSAP_CMD_STOP, SSAP_SEND_DATA_LENGTH);
 			LOGD("wakeup audio play end.\n");
 			break;
 		} else {
